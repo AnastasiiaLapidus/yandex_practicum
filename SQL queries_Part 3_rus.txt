@@ -1,0 +1,164 @@
+1. Выведите общую сумму просмотров у постов, опубликованных в каждый месяц 2008 года. 
+Если данных за какой-либо месяц в базе нет, такой месяц можно пропустить. 
+Результат отсортируйте по убыванию общего количества просмотров.
+
+SELECT month_truncated_date,
+       SUM(views_count) AS total_views
+FROM
+  (SELECT CAST(DATE_TRUNC('MONTH', creation_date) AS date) AS month_truncated_date,
+          views_count
+   FROM stackoverflow.posts
+   WHERE EXTRACT(YEAR
+                 FROM creation_date) = 2008) AS subquery
+GROUP BY month_truncated_date
+ORDER BY total_views DESC;
+
+
+
+2. Выведите имена самых активных пользователей, которые в первый месяц после регистрации 
+(включая день регистрации) дали больше 100 ответов. 
+Вопросы, которые задавали пользователи, не учитывайте. 
+Для каждого имени пользователя выведите количество уникальных значений user_id. 
+Отсортируйте результат по полю с именами в лексикографическом порядке.
+
+SELECT user_name,
+       unique_user_ids
+FROM
+  (SELECT user_name,
+          COUNT(DISTINCT user_id) AS unique_user_ids,
+          COUNT(post_id) AS post_count
+   FROM
+     (SELECT u.id AS user_id,
+             u.display_name AS user_name,
+             u.creation_date AS user_creation_date,
+             p.id AS post_id,
+             p.creation_date AS post_creation_date
+      FROM stackoverflow.users AS u
+      LEFT JOIN stackoverflow.posts AS p ON u.id = p.user_id
+      LEFT JOIN stackoverflow.post_types AS pt ON p.post_type_id = pt.id
+      WHERE pt.type = 'Answer'
+        AND p.creation_date::date <= (u.creation_date::date + INTERVAL '1 month')) AS i
+   GROUP BY user_name
+   HAVING COUNT(post_id) > 100
+   ORDER BY user_name) AS j;
+
+
+
+3. Выведите количество постов за 2008 год по месяцам. 
+Отберите посты от пользователей, которые зарегистрировались в сентябре 2008 года 
+и сделали хотя бы один пост в декабре того же года. 
+Отсортируйте таблицу по значению месяца по убыванию.
+
+SELECT CAST(DATE_TRUNC('MONTH', creation_date) AS date) AS the_month,
+       COUNT(id) AS COUNT
+FROM stackoverflow.posts
+WHERE EXTRACT(YEAR
+              FROM creation_date) = 2008
+  AND user_id IN
+    (SELECT user_id
+     FROM
+       (SELECT u.id AS user_id,
+               u.creation_date AS user_creation_date,
+               p.id AS post_id,
+               p.creation_date AS post_creation_date
+        FROM stackoverflow.users AS u
+        LEFT JOIN stackoverflow.posts AS p ON u.id = p.user_id
+        WHERE EXTRACT(YEAR
+                      FROM u.creation_date) = 2008
+          AND EXTRACT(MONTH
+                      FROM u.creation_date) = 9
+          AND CAST(DATE_TRUNC('MONTH', p.creation_date) AS date) = '2008-12-01') AS i)
+GROUP BY CAST(DATE_TRUNC('MONTH', creation_date) AS date)
+ORDER BY the_month DESC;
+
+
+
+4. Используя данные о постах, выведите несколько полей:
+- идентификатор пользователя, который написал пост;
+- дата создания поста;
+- количество просмотров у текущего поста;
+- сумма просмотров постов автора с накоплением.
+Данные в таблице должны быть отсортированы по возрастанию идентификаторов пользователей, 
+а данные об одном и том же пользователе — по возрастанию даты создания поста.
+
+SELECT user_id,
+       creation_date,
+       views_count,
+       SUM(views_count) OVER(PARTITION BY user_id
+                             ORDER BY creation_date)
+FROM stackoverflow.posts
+ORDER BY user_id,
+         creation_date;
+
+
+
+5. Сколько в среднем дней в период с 1 по 7 декабря 2008 года включительно 
+пользователи взаимодействовали с платформой? 
+Для каждого пользователя отберите дни, в которые он или она опубликовали хотя бы один пост. 
+Нужно получить одно целое число — не забудьте округлить результат.
+
+SELECT ROUND(AVG(COUNT))
+FROM
+  (SELECT user_id,
+          COUNT(the_date)
+   FROM
+     (SELECT DISTINCT user_id,
+                      CAST(DATE_TRUNC('DAY', creation_date) AS date) AS the_date
+      FROM stackoverflow.posts
+      WHERE CAST(DATE_TRUNC('DAY', creation_date) AS date) BETWEEN '2008-12-01' AND '2008-12-07'
+      ORDER BY user_id) AS i
+   GROUP BY user_id) AS j;
+
+
+
+6. На сколько процентов менялось количество постов ежемесячно с 1 сентября по 31 декабря 2008 года? 
+Отобразите таблицу со следующими полями:
+- Номер месяца.
+- Количество постов за месяц.
+- Процент, который показывает, насколько изменилось количество постов в текущем месяце по сравнению с предыдущим.
+Если постов стало меньше, значение процента должно быть отрицательным, если больше — положительным. 
+Округлите значение процента до двух знаков после запятой.
+Напомним, что при делении одного целого числа на другое в PostgreSQL 
+в результате получится целое число, округлённое до ближайшего целого вниз. 
+Чтобы этого избежать, переведите делимое в тип numeric.
+
+SELECT MONTH,
+       post_count,
+       ROUND((post_count::numeric - prev_month_post_count::numeric)/prev_month_post_count::numeric*100, 2)
+FROM
+  (SELECT EXTRACT(MONTH
+                  FROM creation_date) AS MONTH,
+          COUNT(id) AS post_count,
+          LAG(COUNT(id)) OVER (
+                               ORDER BY EXTRACT(MONTH
+                                                FROM creation_date)) AS prev_month_post_count
+   FROM stackoverflow.posts
+   WHERE CAST(DATE_TRUNC('DAY', creation_date) AS date) BETWEEN '2008-09-01' AND '2008-12-31'
+   GROUP BY EXTRACT(MONTH
+                    FROM creation_date)
+   ORDER BY EXTRACT(MONTH
+                    FROM creation_date)) AS i;
+
+
+
+7. Найдите пользователя, который опубликовал больше всего постов за всё время с момента регистрации. 
+Выведите данные его активности за октябрь 2008 года в таком виде:
+- номер недели;
+- дата и время последнего поста, опубликованного на этой неделе.
+
+SELECT DISTINCT EXTRACT(WEEK
+                        FROM i.creation_date) AS week_number,
+                MAX(i.creation_date) OVER(PARTITION BY EXTRACT(WEEK
+                                                               FROM i.creation_date)) AS max_creation_date
+FROM
+  (SELECT *
+   FROM stackoverflow.posts
+   WHERE CAST(DATE_TRUNC('DAY', creation_date) AS date) BETWEEN '2008-10-01' AND '2008-10-31'
+     AND user_id IN
+       (SELECT user_id
+        FROM stackoverflow.posts
+        GROUP BY user_id
+        ORDER BY COUNT(id) DESC
+        LIMIT 1)) AS i
+GROUP BY week_number,
+         i.creation_date;
