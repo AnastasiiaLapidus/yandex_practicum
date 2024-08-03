@@ -13,7 +13,7 @@ The repository contains projects from the Data Analyst course (Yandex.Practicum)
 - Working with hypotheses
 
 ## Training Program:
-![-](https://https://github.com/AnastasiiaLapidus/Study_Projects/blob/main/Certificate_Lapidus_A_eng.png)
+![-](Certificate_Lapidus_A_eng.png)
 
 ## Projects:
 | №| Title and Link | What the Project is About                                                   | Skills and Instruments           |  
